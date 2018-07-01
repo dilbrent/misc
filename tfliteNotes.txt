@@ -1,0 +1,71 @@
+curl http://download.tensorflow.org/example_images/flower_photos.tgz | tar xz -C tf_files
+
+
+IMAGE_SIZE=224
+ARCHITECTURE="mobilenet_0.50_${IMAGE_SIZE}"
+
+tensorboard --logdir tf_files/training_summaries &
+
+
+python -m scripts.retrain \
+  --bottleneck_dir=tf_files/bottlenecks \
+  --how_many_training_steps=500 \
+  --model_dir=tf_files/models/ \
+  --summaries_dir=tf_files/training_summaries/"${ARCHITECTURE}" \
+  --output_graph=tf_files/retrained_graph.pb \
+  --output_labels=tf_files/retrained_labels.txt \
+  --architecture="${ARCHITECTURE}" \
+  --image_dir=tf_files/flower_photos
+
+python -m scripts.label_image \
+    --graph=tf_files/retrained_graph.pb  \
+    --image=tf_files/flower_photos/roses/2414954629_3708a1a04d.jpg
+
+
+IMAGE_SIZE=224
+toco \
+  --graph_def_file=tf_files/retrained_graph.pb \
+  --output_file=tf_files/optimized_graph.lite \
+  --input_format=TENSORFLOW_GRAPHDEF \
+  --output_format=TFLITE \
+  --input_shape=1,${IMAGE_SIZE},${IMAGE_SIZE},3 \
+  --input_array=input \
+  --output_array=final_result \
+  --inference_type=FLOAT \
+  --input_data_type=FLOAT
+
+cp tf_files/optimized_graph.lite android/tflite/app/src/main/assets/graph.lite 
+cp tf_files/retrained_labels.txt android/tflite/app/src/main/assets/labels.txt
+
+
+
+python -m tensorflow.python.tools.optimize_for_inference \
+  --input=tf_files/retrained_graph.pb \
+  --output=tf_files/optimized_graph.pb \
+  --input_names="input" \
+  --output_names="final_result"
+
+du -h tf_files/optimized_graph.pb
+gzip -c tf_files/optimized_graph.pb > tf_files/optimized_graph.pb.gz
+gzip -l tf_files/optimized_graph.pb.gz
+
+python -m scripts.quantize_graph \
+  --input=tf_files/optimized_graph.pb \
+  --output=tf_files/rounded_graph.pb \
+  --output_node_names=final_result \
+  --mode=weights_rounded
+gzip -c tf_files/rounded_graph.pb > tf_files/rounded_graph.pb.gz
+gzip -l tf_files/rounded_graph.pb.gz
+
+cp tf_files/rounded_graph.pb android/tfmobile/assets/graph.pb
+cp tf_files/retrained_labels.txt android/tfmobile/assets/labels.txt 
+
+
+
+
+cp ~/tensorflow-for-poets-2/tf_files/rounded_graph.pb ~/tensorflow/tensorflow/examples/android/assets/tensorflow_inception_graph.pb
+cp ~/tensorflow-for-poets-2/tf_files/retrained_labels.txt ~/tensorflow/tensorflow/examples/android/assets/imagenet_comp_graph_label_strings.txt 
+# cp ~/tensorflow-for-poets-2/tf_files/rounded_graph.pb ~/tensorflow/tensorflow/examples/android/assets/ssd_mobilenet_v1_android_export.pb
+# cp ~/tensorflow-for-poets-2/tf_files/retrained_labels.txt ~/tensorflow/tensorflow/examples/android/assets/coco_labels_list.txt 
+
+
