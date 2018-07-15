@@ -12,6 +12,30 @@ import numpy
 from moviepy.video.io.VideoFileClip import VideoFileClip
 import moviepy.video.io.ffmpeg_writer as ffmpeg_writer
 
+BATCH_SIZE = 4
+DEVICE = '/gpu:0'
+
+def doTransfer(in_path,out_path,checkpoint_dir):
+    if not os.path.isdir(in_path):
+        if os.path.exists(out_path) and os.path.isdir(out_path):
+            out_path = \
+                    os.path.join(out_path,os.path.basename(in_path))
+
+        ffwd_to_img(in_path, out_path, checkpoint_dir,
+                    device=DEVICE)
+    else:
+        files = list_files(in_path)
+        full_in = [os.path.join(in_path,x) for x in files]
+        full_out = [os.path.join(out_path,x) for x in files]
+        allow_different_dimensions=True
+        if allow_different_dimensions:
+            ffwd_different_dimensions(full_in, full_out, checkpoint_dir, 
+                    device_t=DEVICE, batch_size=BATCH_SIZE)
+        else :
+            ffwd(full_in, full_out, checkpoint_dir, device_t=DEVICE,
+                    batch_size=BATCH_SIZE)
+
+
 def ffwd_video(path_in, path_out, checkpoint_dir, device_t='/gpu:0', batch_size=4):
     video_clip = VideoFileClip(path_in, audio=False)
     video_writer = ffmpeg_writer.FFMPEG_VideoWriter(path_out, video_clip.size, video_clip.fps, codec="libx264",
